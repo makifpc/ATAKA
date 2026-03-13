@@ -396,6 +396,23 @@ def main():
         f"(MD5(\"{pt2}\" + \"{pt1}\") = {expected_b3})"
     )
 
+    # -----------------------------------------------------------------------
+    # Recover the plaintext password from MD5(base64(password))
+    # -----------------------------------------------------------------------
+    # The password is "qaz123wsx" — a keyboard pattern (q-a-z, 1-2-3, w-s-x).
+    password = "qaz123wsx"
+    pwd_b64 = base64.b64encode(password.encode("utf-8")).decode()
+    pwd_hash = hashlib.md5(pwd_b64.encode()).hexdigest()
+    verify_pwd = pwd_hash == pt2
+
+    print(f"\n{'='*60}")
+    print("PASSWORD RECOVERY")
+    print(f"{'='*60}")
+    print(f"  password      = {password}")
+    print(f"  base64(pwd)   = {pwd_b64}")
+    print(f"  MD5(base64)   = {pwd_hash}")
+    print(f"  Matches bilgi2: {'✓' if verify_pwd else '✗'}")
+
     # Summary
     print(f"\n{'='*60}")
     print("SUMMARY")
@@ -404,8 +421,9 @@ def main():
     print(f"bilgi1 = MD5(base64(school_info)) = {pt1}")
     print(f"bilgi2 = MD5(base64(password))    = {pt2}")
     print(f"bilgi3 = MD5(bilgi2 + bilgi1)     = {pt3}")
-    print(f"\nEncrypted password (MD5 hash): {pt2}")
-    print(f"All cross-checks passed: {'✓' if verify1 and verify3 else '✗'}")
+    print(f"\nPassword: {password}")
+    print(f"All cross-checks passed: "
+          f"{'✓' if verify1 and verify3 and verify_pwd else '✗'}")
 
 
 if __name__ == "__main__":

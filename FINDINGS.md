@@ -66,6 +66,20 @@ a9a5e5ab9b5b9ec84b8f05527a4b6cd6
 
 This is `MD5(base64(password))` — the MD5 hash of the base64-encoded password string (9–16 characters). All three bilgi fields cross-validate, confirming the decryption is correct.
 
+## Recovered Password
+
+The plaintext password is:
+
+```
+qaz123wsx
+```
+
+Verification chain:
+- `base64("qaz123wsx")` = `cWF6MTIzd3N4`
+- `MD5("cWF6MTIzd3N4")` = `a9a5e5ab9b5b9ec84b8f05527a4b6cd6` ✓
+
+The password `qaz123wsx` is a common keyboard pattern: columns **q-a-z**, **1-2-3**, **w-s-x** on a QWERTY keyboard.
+
 ## Validation
 
 The complete algorithm was implemented in `decrypt.py` using the non-resetting MD5 and bit transforms extracted from the hex file. It was verified against all 12 examples in `examples.txt` for:
