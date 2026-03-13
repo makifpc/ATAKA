@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
 """
-Decrypt bilgi2 from codes.txt to recover the password hash.
+Decrypt all bilgi fields from codes.txt to recover the encrypted password.
 
 The encryption algorithm was reverse-engineered from program.exe.hex, the hex
 dump of the Delphi binary.  The cipher works as follows:
 
-  1. Key "MBD+MOAE+AY81" is base64-encoded → "TUJEK01PQUUrQVk4MQ=="
+  1. A key string is base64-encoded to form the initial keystream seed.
   2. A custom TMD5 object is created.  Its ``HashAsBytes`` is **destructive**:
      it applies MD5 padding/length directly to the live state, so every call
      permanently alters the running hash context (non-resetting behaviour).
-  3. Data (UTF-16LE of the MD5 hex-digest of base64(password)) is processed
-     in 16-byte blocks:
+  3. Data (UTF-16LE of an MD5 hex-digest) is processed in 16-byte blocks:
        • MD5.Update(current_key_bytes)  then  hash = MD5.HashAsBytes()
        • For each byte in the block two bit-manipulation transforms are
          applied (selected by the upper/lower hex digit of the corresponding
          MD5 hash byte), followed by XOR with that hash byte.
        • The uppercase hex representation of the 16 hash bytes becomes the
          key fed to the next MD5.Update call.
+
+Three different keys are used for the three bilgi fields:
+  - bilgi1: key "Aymm+bd0813"  → stores MD5(base64(school_info))
+  - bilgi2: key "MBD+MOAE+AY81" → stores MD5(base64(password))
+  - bilgi3: key "mfl86+mfl86"  → stores MD5(md5_password + md5_school)
 
 This script implements the full algorithm (NonResettingMD5 + transforms)
 derived from program.exe.hex, so it can decrypt any ciphertext without
@@ -209,7 +213,10 @@ def _decrypt_byte(cipher_byte, hash_byte):
 # High-level encrypt / decrypt
 # ---------------------------------------------------------------------------
 
-ENCRYPTION_KEY = "MBD+MOAE+AY81"
+BILGI1_KEY = "Aymm+bd0813"
+BILGI2_KEY = "MBD+MOAE+AY81"
+BILGI3_KEY = "mfl86+mfl86"
+ENCRYPTION_KEY = BILGI2_KEY  # default for backward compatibility
 
 
 def encrypt(plaintext_bytes, key=ENCRYPTION_KEY):
@@ -321,27 +328,82 @@ def main():
         print("\nWARNING: Some examples failed validation!")
         sys.exit(1)
 
-    # Decrypt codes.txt bilgi2
-    codes_b2 = None
-    with open("codes.txt") as f:
-        for line in f:
-            if line.strip().startswith("bilgi2="):
-                codes_b2 = line.strip().split("=", 1)[1]
+    # Validate bilgi3 cross-check for all examples
+    school_info = "İSTANBUL BEYKOZ NUN OKULLARI"
+    school_b64 = base64.b64encode(school_info.encode("cp1254")).decode()
+    school_hash = hashlib.md5(school_b64.encode()).hexdigest()
 
-    if not codes_b2:
-        print("ERROR: bilgi2 not found in codes.txt")
+    print(f"\nBilgi3 cross-validation:")
+    for pwd, b2, b3 in examples:
+        b64_pwd = get_b64(pwd)
+        pwd_hash = hashlib.md5(b64_pwd.encode()).hexdigest()
+        expected_b3 = hashlib.md5(
+            (pwd_hash + school_hash).encode()
+        ).hexdigest()
+        ct_b3 = base64.b64decode(b3)
+        actual_b3 = decrypt(ct_b3, BILGI3_KEY).decode("utf-16-le")
+        ok = actual_b3 == expected_b3
+        print(f"  {'✓' if ok else '✗'} '{pwd}': bilgi3 = {actual_b3}")
+        if not ok:
+            all_ok = False
+
+    if not all_ok:
+        print("\nWARNING: bilgi3 cross-validation failed!")
         sys.exit(1)
 
-    ct = base64.b64decode(codes_b2)
-    decrypted = decrypt(ct)
-    md5_hash = decrypted.decode("utf-16-le")
+    # -----------------------------------------------------------------------
+    # Decrypt all three bilgi fields from codes.txt
+    # -----------------------------------------------------------------------
+    codes_bilgi = {}
+    with open("codes.txt") as f:
+        for line in f:
+            stripped = line.strip()
+            for tag in ("bilgi1", "bilgi2", "bilgi3"):
+                if stripped.startswith(f"{tag}="):
+                    codes_bilgi[tag] = stripped.split("=", 1)[1]
 
     print(f"\n{'='*60}")
-    print(f"Decrypted bilgi2 from codes.txt:")
-    print(f"  MD5(base64(password)) = {md5_hash}")
-    print(f"\nTo find the password, crack this MD5 hash where the")
-    print(f"input is the base64 encoding of the password string.")
+    print("Decrypting codes.txt")
     print(f"{'='*60}")
+
+    # bilgi1: school info hash
+    ct1 = base64.b64decode(codes_bilgi["bilgi1"])
+    pt1 = decrypt(ct1, BILGI1_KEY).decode("utf-16-le")
+    print(f"\nbilgi1 (key: {BILGI1_KEY}):")
+    print(f"  Decrypted: {pt1}")
+    print(f"  This is MD5(base64(\"{school_info}\", cp1254))")
+    verify1 = pt1 == school_hash
+    print(f"  Verified: {'✓' if verify1 else '✗'} (expected {school_hash})")
+
+    # bilgi2: password hash
+    ct2 = base64.b64decode(codes_bilgi["bilgi2"])
+    pt2 = decrypt(ct2, BILGI2_KEY).decode("utf-16-le")
+    print(f"\nbilgi2 (key: {BILGI2_KEY}):")
+    print(f"  Decrypted: {pt2}")
+    print(f"  This is MD5(base64(password))")
+    print(f"  *** This is the encrypted password hash ***")
+
+    # bilgi3: cross-check hash
+    ct3 = base64.b64decode(codes_bilgi["bilgi3"])
+    pt3 = decrypt(ct3, BILGI3_KEY).decode("utf-16-le")
+    expected_b3 = hashlib.md5((pt2 + pt1).encode()).hexdigest()
+    verify3 = pt3 == expected_b3
+    print(f"\nbilgi3 (key: {BILGI3_KEY}):")
+    print(f"  Decrypted: {pt3}")
+    print(f"  This is MD5(md5_password + md5_school)")
+    print(f"  Verified: {'✓' if verify3 else '✗'} "
+          f"(MD5(\"{pt2}\" + \"{pt1}\") = {expected_b3})")
+
+    # Summary
+    print(f"\n{'='*60}")
+    print("SUMMARY")
+    print(f"{'='*60}")
+    print(f"School info: {school_info}")
+    print(f"bilgi1 = MD5(base64(school_info)) = {pt1}")
+    print(f"bilgi2 = MD5(base64(password))    = {pt2}")
+    print(f"bilgi3 = MD5(bilgi2 + bilgi1)     = {pt3}")
+    print(f"\nEncrypted password (MD5 hash): {pt2}")
+    print(f"All cross-checks passed: {'✓' if verify1 and verify3 else '✗'}")
 
 
 if __name__ == "__main__":
