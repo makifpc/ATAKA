@@ -391,8 +391,10 @@ def main():
     print(f"\nbilgi3 (key: {BILGI3_KEY}):")
     print(f"  Decrypted: {pt3}")
     print(f"  This is MD5(md5_password + md5_school)")
-    print(f"  Verified: {'✓' if verify3 else '✗'} "
-          f"(MD5(\"{pt2}\" + \"{pt1}\") = {expected_b3})")
+    print(
+        f"  Verified: {'✓' if verify3 else '✗'} "
+        f"(MD5(\"{pt2}\" + \"{pt1}\") = {expected_b3})"
+    )
 
     # Summary
     print(f"\n{'='*60}")
